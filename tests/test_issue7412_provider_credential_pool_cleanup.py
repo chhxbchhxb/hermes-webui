@@ -115,12 +115,11 @@ class _FakeConfig:
 class _BlockAgentFinder:
     """MetaPathFinder that raises ImportError for any ``agent.*``
     import. Used to simulate a stripped-down test env where the
-    hermes-agent modules are not installed. The hermes-agent repo
-    lives at ``/home/xiaobao/.hermes/hermes-agent`` and is on
-    ``sys.path`` in this dev env, so a bare ``del sys.modules`` is
-    not enough -- Python falls back to the real loader. A finder
-    that hard-raises is the only reliable way to make the helper's
-    call-time import fail.
+    hermes-agent modules are not installed. In a dev checkout the
+    hermes-agent repo is typically on ``sys.path``, so a bare
+    ``del sys.modules`` is not enough -- Python falls back to the
+    real loader. A finder that hard-raises is the only reliable way
+    to make the helper's call-time import fail.
     """
 
     def find_spec(self, name, path=None, target=None):
