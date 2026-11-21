@@ -9927,6 +9927,16 @@ def _context_lookup_agent_fallback(agent, resolved_api_key=None, resolved_base_u
     )
 
 
+def _context_lookup_config_base_url(value: object) -> str:
+    """A config-declared ``base_url`` as a URL string, or ``""`` when it is not one (#8982).
+
+    Only a string is a URL. A non-string declaration (a YAML integer ``base_url:
+    123``, a boolean, a mapping) names no endpoint, and ``str()``-ing it invents
+    the URL-shaped value ``"123"`` -- enough to fill the lookup's URL slot and,
+    beside the route's key, to send the credential to a URL that isn't one.
+    """
+    return value.strip() if isinstance(value, str) else ""
+
 def _context_length_lookup_inputs_for_model(
     model: str | None,
     provider: str | None = None,
@@ -10019,7 +10029,7 @@ def _context_length_lookup_inputs_for_model(
                 or not _model_cfg_provider
                 or _providers_match_for_context(_owner_provider, _session_provider)
             ):
-                effective_base_url = str(model_cfg.get("base_url") or "").strip()
+                effective_base_url = _context_lookup_config_base_url(model_cfg.get("base_url"))
 
     custom_providers = cfg.get("custom_providers") if isinstance(cfg, dict) else None
     if not isinstance(custom_providers, list):
@@ -10034,7 +10044,7 @@ def _context_length_lookup_inputs_for_model(
             if not _providers_match_for_context(provider_key, effective_provider):
                 continue
             if not effective_base_url:
-                effective_base_url = str(provider_cfg.get("base_url") or "").strip()
+                effective_base_url = _context_lookup_config_base_url(provider_cfg.get("base_url"))
             provider_context_length = _models_config_context_length(
                 provider_cfg.get("models"),
                 bare_model or model_for_lookup,
@@ -10069,7 +10079,7 @@ def _context_length_lookup_inputs_for_model(
                 continue
             entry_name = str(entry.get("name") or "").strip()
             entry_slug = _custom_provider_slug_for_context(entry_name)
-            entry_base = str(entry.get("base_url") or "").strip()
+            entry_base = _context_lookup_config_base_url(entry.get("base_url"))
             entry_base_norm = entry_base.rstrip("/")
             provider_matches = bool(
                 effective_provider
@@ -11263,7 +11273,7 @@ def _session_context_length_lookup_state(
         resolved_model, resolved_provider, resolved_base_url = resolve_model_provider(model_for_resolution)
         model_for_lookup = str(resolved_model or model_for_lookup).strip()
         provider_for_lookup = str(resolved_provider or provider_for_lookup or "").strip()
-        base_url_for_lookup = str(resolved_base_url or "").strip()
+        base_url_for_lookup = _context_lookup_config_base_url(resolved_base_url)
     except Exception:
         logger.debug("session context-length lookup state resolution failed", exc_info=True)
     if _session_context_lookup_uses_chat_route(provider_for_lookup):
@@ -11299,19 +11309,26 @@ def _session_context_length_lookup_state(
                 lookup_only=True,
             )
             raise_for_custom_provider_route(route)
-            route_url = str(route.get("base_url") or "").strip()
+            # #8982: the route bundle's endpoint is a URL only when it is a string.
+            # A non-string base_url (YAML ``base_url: 123``, a boolean, a mapping) is
+            # a malformed declaration, not an endpoint to stringify: it counts as no
+            # URL, and the key doesn't travel with it, exactly as with a blank
+            # base_url. The key's own gate already required a string (below); the
+            # URL's did not.
+            route_bundle_url = route.get("base_url")
+            route_url = route_bundle_url.strip() if isinstance(route_bundle_url, str) else ""
             if route_url:
                 base_url_for_lookup = route_url
-            # #8963: no switched-off verdict of the lookup's own here. The chat
-            # obeys this merge: api/streaming.py prints and drops the Agent's
-            # resolve_runtime_provider error (its switched-off ValueError too) and
-            # routes through the same merge, so a route it builds is the chat's.
-            route_key = route.get("api_key")
-            keyless = bool(isinstance(custom, dict) and custom.get("keyless"))
-            if isinstance(route_key, str) and not keyless:
-                route_key = route_key.strip()
-                if route_key:
-                    api_key_for_lookup = route_key
+                # #8963: no switched-off verdict of the lookup's own here. The chat
+                # obeys this merge: api/streaming.py prints and drops the Agent's
+                # resolve_runtime_provider error (its switched-off ValueError too) and
+                # routes through the same merge, so a route it builds is the chat's.
+                route_key = route.get("api_key")
+                keyless = bool(isinstance(custom, dict) and custom.get("keyless"))
+                if isinstance(route_key, str) and not keyless:
+                    route_key = route_key.strip()
+                    if route_key:
+                        api_key_for_lookup = route_key
         except Exception:
             logger.debug("session context-length lookup: the session's chat route is unavailable", exc_info=True)
     return model_for_lookup, provider_for_lookup, base_url_for_lookup, api_key_for_lookup

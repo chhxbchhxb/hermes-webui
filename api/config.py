@@ -4028,10 +4028,23 @@ def resolve_model_provider(model_id: str, *, explicitly_picked: bool = False) ->
 
 
 def _custom_record_base_url(record: object) -> str | None:
-    """Return a custom record's OWN endpoint, or None when it declares none."""
+    """Return a custom record's OWN endpoint, or None when it declares none.
+
+    #8982: only a string is a URL. A type slip in config.yaml (``base_url: 123``,
+    ``true``, a mapping) is a malformed declaration, and ``str()``-ing it invents
+    the URL-shaped value ``"123"``: enough for a route to look owned, for the
+    context-length lookup to treat it as the chat's endpoint, and -- on that path
+    -- for the route's credential to travel beside it. Nothing declares an
+    endpoint here, so the honest reading is "no URL", exactly as with an empty
+    string or a missing field. This is where the route bundle's endpoint is
+    merged, so the rule reaches every consumer of the merged bundle.
+    """
     if not isinstance(record, dict):
         return None
-    return str(record.get("base_url") or "").strip() or None
+    value = record.get("base_url")
+    if not isinstance(value, str):
+        return None
+    return value.strip() or None
 
 
 def _resolve_custom_record_key(
